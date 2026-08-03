@@ -1,34 +1,42 @@
 # TelpostTemperature
 
-ESP32 tabanlı, BMP280 sensörü ile sıcaklık ve basınç verisi okuyup SSD1306 OLED ekranda gösteren gömülü sistem projesi. PlatformIO ile geliştirilmektedir.
+ESP32 tabanlı, BMP280 sensörü ile sıcaklık ve basınç verisi okuyup ST7789 TFT ekranda gösteren gömülü sistem projesi. PlatformIO ile geliştirilmektedir.
 
 ## Donanım
 
 | Bileşen | Açıklama |
 |---|---|
-| Geliştirme kartı | ESP32 (`esp32dev`) |
+| Geliştirme kartı | ESP32 DevKit V1 (`esp32dev`) |
 | Sıcaklık/Basınç sensörü | BMP280 (I2C) |
-| Ekran | SSD1306 OLED, 128x64 px (I2C) |
+| Ekran | 2.25" IPS bar LCD, ST7789P3 sürücü, 76x284 px (SPI) |
 
-### I2C Bağlantıları
+Ekran modülü etiketi: `FP-225TSFP09A`, PCB üzerinde `Driver IC: ST7789P3`, `Resolution: 76x284`.
 
-ESP32'nin varsayılan donanımsal I2C pinleri kullanılır:
+### Bağlantı Şeması
 
-| Sinyal | ESP32 Pin |
-|---|---|
-| SDA | GPIO21 |
-| SCL | GPIO22 |
-| VCC | 3.3V |
-| GND | GND |
+**Ekran (SPI)** — modül header'ı: `GND VCC SCL SDA RES DC CS BL`
 
-Her iki modül (BMP280 ve SSD1306) aynı I2C hattına paralel bağlanır.
-
-### I2C Adresleri
-
-| Modül | Adres | Not |
+| Ekran pini | ESP32 pini | İşlev |
 |---|---|---|
-| BMP280 | `0x76` | Piyasadaki çoğu ucuz modül bu adresi kullanır (orijinal Adafruit kartlar `0x77` kullanabilir) |
-| SSD1306 | `0x3C` | OLED ekranlarda standart adres |
+| GND | GND | Ortak toprak |
+| VCC | 3.3V | Besleme (5V bağlamayın) |
+| SCL | D18 | SPI clock (SCK) |
+| SDA | D23 | SPI veri (MOSI) |
+| RES | D4 | Reset |
+| DC | D2 | Data/Command seçici |
+| CS | D5 | Chip select |
+| BL | 3.3V | Arka ışık |
+
+**BMP280 (I2C)**
+
+| BMP280 pini | ESP32 pini |
+|---|---|
+| VIN | 3.3V |
+| GND | GND |
+| SCL | D22 |
+| SDA | D21 |
+
+I2C adresi: `0x76` (piyasadaki çoğu ucuz modül bu adresi kullanır; orijinal Adafruit kartlar `0x77` kullanabilir).
 
 ## Yazılım Gereksinimleri
 
@@ -40,8 +48,8 @@ Her iki modül (BMP280 ve SSD1306) aynı I2C hattına paralel bağlanır.
 `platformio.ini` içinde tanımlı ve derleme sırasında PlatformIO tarafından otomatik indirilir:
 
 - `adafruit/Adafruit BMP280 Library`
-- `adafruit/Adafruit SSD1306`
 - `adafruit/Adafruit GFX Library`
+- `adafruit/Adafruit ST7735 and ST7789 Library`
 
 ## Derleme ve Yükleme
 
@@ -56,10 +64,12 @@ pio run --target upload
 pio device monitor
 ```
 
+> Not: Seri monitör açıkken yükleme yapılamaz (port meşgul hatası). Yüklemeden önce monitörü kapatın.
+
 ## Proje Yapısı
 
 ```
-├── src/            # Uygulama kaynak kodu (main.cpp)
+├── src/             # Uygulama kaynak kodu (main.cpp)
 ├── include/         # Proje geneli header dosyaları
 ├── lib/             # Projeye özel kütüphaneler
 ├── test/            # PlatformIO test dosyaları
@@ -68,7 +78,17 @@ pio device monitor
 
 ## Çalışma Mantığı
 
-1. Başlangıçta OLED ekran ve BMP280 sensörü I2C üzerinden başlatılır. Başlatma başarısız olursa hata mesajı seri porta yazılır ve cihaz o adımda durur.
-2. Ana döngüde (`loop`) BMP280'den sıcaklık (°C) ve basınç (hPa) verisi okunur.
-3. Okunan değerler hem seri port üzerinden hem de OLED ekranda gösterilir.
-4. Ölçümler arasında 2 saniye bekleme uygulanır.
+1. Başlangıçta ST7789 ekran SPI üzerinden, BMP280 sensörü I2C üzerinden başlatılır. Sensör bulunamazsa seri porta ve ekrana hata mesajı yazılır.
+2. Ekran yatay (landscape) modda kullanılır: `setRotation(1)` ile 284x76 çözünürlük.
+3. Ana döngüde `millis()` tabanlı 2 saniyelik aralıklarla BMP280'den sıcaklık (°C) ve basınç (hPa) okunur.
+4. Değerler hem seri porta hem TFT ekrana yazılır. Ekranda yalnızca değişen değerler yeniden çizilir (titreme önlenir).
+
+## Geliştirme Notları
+
+Bu panelle çalışırken karşılaşılan ve çözülen noktalar:
+
+- **SPI hızı**: Adafruit kütüphanesinin varsayılanı 32 MHz'dir. Breadboard ve jumper kablolarla bu hız sinyal bozulmasına yol açar; proje 4 MHz kullanır (`TFT_SPI_HIZI`).
+- **Init sırası**: Kütüphanenin `init()` fonksiyonu panel init komutlarını 32 MHz'de gönderir ve `setSPISpeed()` yalnızca init'ten sonra etki eder. Bu nedenle hız düşürüldükten sonra çekirdek ST7789 init komutları `panelInitEldenGonder()` ile elle yeniden gönderilir.
+- **GRAM offset**: 76x284 standart dışı bir çözünürlüktür. Kütüphane bu boyut için offsetleri (`colstart=82`, `rowstart=18`) otomatik hesaplar, manuel ayar gerekmez.
+- **Ekran yönü**: Görüntü baş aşağı çıkarsa `setRotation(1)` yerine `setRotation(3)` kullanılabilir.
+- **GPIO2 (DC)**: ESP32'de strapping pindir. Yükleme sorunu yaşanırsa DC pini D15'e taşınabilir.
