@@ -7,6 +7,8 @@
 #include <Adafruit_ST7789.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include "logo_acilis.h"
+#include "logo_merkez.h"
 
 // --- TFT EKRAN AYARLARI ---
 // Panel: 2.25" IPS bar LCD, ST7789P3 sürücü, 76x284 piksel, SPI arayüz.
@@ -104,6 +106,12 @@ static void adresKesifModu() {
    // }
    ============================================================ */
 
+// --- LOGO ---
+// Amblem gercek gorselden uretilmis RGB565 bitmap olarak gomulur.
+// include/logo.h dosyasi tools/logo_donustur.py tarafindan olusturulur:
+//   python tools/logo_donustur.py bmwlogo.png include/logo.h logoBuyuk=64 logoMerkez=34
+// Acilis icin logoBuyuk (64x64), merkez icin logoMerkez (34x34) kullanilir.
+
 // --- EKRAN YERLEŞİMİ (YATAY / LANDSCAPE, 2x2 IZGARA) ---
 // setRotation(1) ile panel 284 px genis, 76 px yuksek hale gelir.
 // 4 deger sigdirmak icin ekran 2 satir x 2 sutuna bolunur:
@@ -112,18 +120,22 @@ static void adresKesifModu() {
 #define EKRAN_GENISLIK 284
 #define EKRAN_YUKSEKLIK 76
 
+// Ayirici cizgilerin kesistigi merkez; logo buraya oturur.
+#define MERKEZ_X 142
+#define MERKEZ_Y 38
+#define MERKEZ_LOGO_YARICAP 17
+
 // GFX fontunda karakter genisligi: size 1 -> 6 px, size 2 -> 12 px
-#define SOL_SUTUN_X  6
-#define SAG_SUTUN_X  146
-#define SUTUN_AYIRICI_X 142
+// Sutunlar merkezdeki logoya carpmayacak sekilde disari kaydirildi.
+#define SOL_SUTUN_X  8
+#define SAG_SUTUN_X  166
 
-#define UST_ETIKET_Y   14
-#define UST_DEGER_Y    24
-#define ALT_ETIKET_Y   46
-#define ALT_DEGER_Y    56
-#define SATIR_AYIRICI_Y 43
+#define UST_ETIKET_Y   6
+#define UST_DEGER_Y    16
+#define ALT_ETIKET_Y   44
+#define ALT_DEGER_Y    54
 
-#define DEGER_GENISLIK 78
+#define DEGER_GENISLIK 100
 #define DEGER_YUKSEKLIK 16
 
 // --- ÖLÇÜM ZAMANLAMASI ---
@@ -159,7 +171,9 @@ static void panelInitEldenGonder() {
   tft.sendCommand(0x36, &arg, 1); // MADCTL
   delay(10);
 
-  tft.sendCommand(0x21); // INVON - IPS panellerde renk cevirme genelde gerekli
+  // Bu panelde renk cevirme KAPALI olmali. INVON gonderildiginde arka plan
+  // beyaza, beyaz yazilar siyaha doner (tum renkler ters cikar).
+  tft.sendCommand(0x20); // INVOFF
   delay(10);
 
   tft.sendCommand(0x13); // NORON - normal goruntuleme modu
@@ -169,39 +183,57 @@ static void panelInitEldenGonder() {
   delay(120);
 }
 
+// Bitmap logoyu verilen merkez noktasina ortalayarak cizer.
+// Maske sayesinde dairenin disindaki saydam pikseller cizilmez; logo
+// arka planin uzerine kare bir blok birakmadan oturur.
+static void logoCiz(int16_t cx, int16_t cy, const uint16_t *bitmap,
+                    const uint8_t *maske, int16_t genislik, int16_t yukseklik) {
+  tft.drawRGBBitmap(cx - genislik / 2, cy - yukseklik / 2,
+                    bitmap, maske, genislik, yukseklik);
+}
+
+// Cihaz acilisinda birkac saniye gosterilen logo ekrani.
+static void acilisEkraniniGoster() {
+  tft.fillScreen(ST77XX_BLACK);
+
+  // M logosu yatay oranli (yaklasik 6:1), bu yuzden ekran genisligini tam
+  // kaplayacak sekilde olceklenir ve dikeyde ortalanir.
+  logoCiz(EKRAN_GENISLIK / 2, EKRAN_YUKSEKLIK / 2,
+          logoAcilis, logoAcilisMaske,
+          LOGOACILIS_GENISLIK, LOGOACILIS_YUKSEKLIK);
+
+  delay(2500);
+}
+
 // Değişmeyen başlık, etiket ve birimleri bir kez çizer.
 static void ekranIskeletiniCiz() {
   tft.fillScreen(ST77XX_BLACK);
 
-  // Ust baslik seridi
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setTextSize(1);
-  tft.setCursor(SOL_SUTUN_X, 2);
-  tft.print(F("TELPOST :)"));
-
-  tft.drawFastHLine(0, 11, EKRAN_GENISLIK, ST77XX_WHITE);
-
-  // Izgara ayirici cizgiler
-  tft.drawFastVLine(SUTUN_AYIRICI_X, 13, EKRAN_YUKSEKLIK - 15, ST77XX_WHITE);
-  tft.drawFastHLine(0, SATIR_AYIRICI_Y, EKRAN_GENISLIK, ST77XX_WHITE);
+  // Izgarayi dort ceyrege bolen ayirici cizgiler
+  tft.drawFastVLine(MERKEZ_X, 2, EKRAN_YUKSEKLIK - 4, ST77XX_WHITE);
+  tft.drawFastHLine(2, MERKEZ_Y, EKRAN_GENISLIK - 4, ST77XX_WHITE);
 
   tft.setTextColor(ST77XX_WHITE);
 
-  // Ust sol: sicaklik
+  // Sol ust: sicaklik
   tft.setCursor(SOL_SUTUN_X, UST_ETIKET_Y);
   tft.print(F("SICAKLIK C"));
 
-  // Ust sag: basinc
+  // Sag ust: su
   tft.setCursor(SAG_SUTUN_X, UST_ETIKET_Y);
-  tft.print(F("BASINC hPa"));
-
-  // Alt sol: su
-  tft.setCursor(SOL_SUTUN_X, ALT_ETIKET_Y);
   tft.print(F("SU C"));
 
-  // Alt sag: yag
+  // Sol alt: basinc
+  tft.setCursor(SOL_SUTUN_X, ALT_ETIKET_Y);
+  tft.print(F("BASINC hPa"));
+
+  // Sag alt: yag
   tft.setCursor(SAG_SUTUN_X, ALT_ETIKET_Y);
   tft.print(F("YAG C"));
+
+  // Logo en son cizilir: cizgilerin kesisimini kapatarak merkeze oturur.
+  logoCiz(MERKEZ_X, MERKEZ_Y, logoMerkez, logoMerkezMaske,
+          LOGOMERKEZ_GENISLIK, LOGOMERKEZ_YUKSEKLIK);
 }
 
 // Bir ölçüm değerini, eski değerin üzerini temizleyerek yazar.
@@ -228,6 +260,7 @@ void setup() {
   panelInitEldenGonder();
   // Yatay (landscape) yerlesim: 284x76. Goruntu bas asagi cikarsa 3 yapin.
   tft.setRotation(1);
+  acilisEkraniniGoster();
   ekranIskeletiniCiz();
 
   // 2. BMP280 SENSÖRÜNÜ BAŞLATMA
@@ -308,13 +341,13 @@ void loop() {
   }
 
   if (isnan(sonBasinc) || fabsf(basinc - sonBasinc) >= 0.05F) {
-    degerYaz(SAG_SUTUN_X, UST_DEGER_Y, basinc, ST77XX_GREEN);
+    degerYaz(SOL_SUTUN_X, ALT_DEGER_Y, basinc, ST77XX_GREEN);
     sonBasinc = basinc;
   }
 
   if (suSicakligi != DEVICE_DISCONNECTED_C &&
       (isnan(sonSu) || fabsf(suSicakligi - sonSu) >= 0.05F)) {
-    degerYaz(SOL_SUTUN_X, ALT_DEGER_Y, suSicakligi, ST77XX_CYAN);
+    degerYaz(SAG_SUTUN_X, UST_DEGER_Y, suSicakligi, ST77XX_CYAN);
     sonSu = suSicakligi;
   }
 

@@ -90,9 +90,10 @@ pio device monitor
 
 ```
 ├── src/             # Uygulama kaynak kodu (main.cpp)
-├── include/         # Proje geneli header dosyaları
+├── include/         # Proje geneli header dosyaları (üretilen logo dizileri)
 ├── lib/             # Projeye özel kütüphaneler
 ├── test/            # PlatformIO test dosyaları
+├── tools/           # Yardımcı script'ler (logo dönüştürücü)
 └── platformio.ini   # Ortam, board ve bağımlılık tanımları
 ```
 
@@ -100,26 +101,43 @@ pio device monitor
 
 1. Başlangıçta ST7789 ekran SPI üzerinden, BMP280 I2C üzerinden, DS18B20'ler 1-Wire üzerinden başlatılır. BMP280 bulunamazsa seri porta ve ekrana hata yazılıp çalışma durdurulur; DS18B20'ler bulunamazsa yalnızca uyarı verilir, sistem çalışmaya devam eder.
 2. Ekran yatay (landscape) modda kullanılır: `setRotation(1)` ile 284x76 çözünürlük.
-3. Ana döngüde `millis()` tabanlı 2 saniyelik aralıklarla dört değer okunur: ortam sıcaklığı (°C), basınç (hPa), su sıcaklığı (°C), yağ sıcaklığı (°C).
-4. Değerler hem seri porta hem TFT ekrana yazılır. Ekranda yalnızca değişen değerler yeniden çizilir (titreme önlenir).
+3. Açılışta 2.5 saniye boyunca tam genişlikte logo gösterilir, ardından ölçüm ekranına geçilir.
+4. Ana döngüde `millis()` tabanlı 2 saniyelik aralıklarla dört değer okunur: ortam sıcaklığı (°C), basınç (hPa), su sıcaklığı (°C), yağ sıcaklığı (°C).
+5. Değerler hem seri porta hem TFT ekrana yazılır. Ekranda yalnızca değişen değerler yeniden çizilir (titreme önlenir).
 
 ### Ekran Yerleşimi
 
-Ekran 2x2 ızgaraya bölünmüştür, dört değer aynı anda görünür:
+Ekran dört çeyreğe bölünmüştür, logo ayırıcı çizgilerin kesiştiği merkeze oturur:
 
 ```
-┌─────────────────────────────────────┐
-│ TELPOST :)                          │
-├──────────────────┬──────────────────┤
-│ SICAKLIK C       │ BASINC hPa       │
-│ 25.7   (sarı)    │ 1006.4  (yeşil)  │
-├──────────────────┼──────────────────┤
-│ SU C             │ YAG C            │
-│ 24.3   (cyan)    │ 38.1  (turuncu)  │
-└──────────────────┴──────────────────┘
+┌──────────────────────┬──────────────────────┐
+│ SICAKLIK C           │ SU C                 │
+│ 25.7      (sarı)     │ 24.3      (cyan)     │
+├──────────────────[logo]──────────────────────┤
+│ BASINC hPa           │ YAG C                │
+│ 1006.4    (yeşil)    │ 38.1    (turuncu)    │
+└──────────────────────┴──────────────────────┘
 ```
 
 Bağlantısı kopan bir DS18B20 için ilgili hücre güncellenmez, son geçerli değer ekranda kalır.
+
+## Logo Dönüştürme
+
+ESP32'de dosya sistemi kullanılmadığı için logo görselleri derleme zamanında RGB565 C dizisine çevrilip flash belleğe gömülür. Dönüştürmeyi `tools/logo_donustur.py` yapar (Pillow gerektirir: `python -m pip install Pillow`).
+
+```bash
+# Açılış ekranı: 284x76 kutusuna sığdırılır (en/boy oranı korunur)
+python tools/logo_donustur.py bmwacilis.jpg include/logo_acilis.h logoAcilis=284x76
+
+# Merkez logo: 34x34 kare
+python tools/logo_donustur.py bmwlogo.png include/logo_merkez.h logoMerkez=34
+```
+
+Script'in yaptıkları:
+
+- **Boşluk kırpma**: Logo genelde büyük bir tuval içinde ortalanmış gelir. Bu boşluk kırpılmazsa logo hedef kutuda küçük kalır. Saydamlık varsa alpha kanalından, yoksa siyah zeminden gerçek sınırlar bulunur.
+- **Oran koruma**: Görsel hedef kutuya sığacak şekilde ölçeklenir, ezilmez. `ad=34` kare kutu, `ad=284x76` dikdörtgen kutu anlamına gelir.
+- **Maske üretimi**: Saydam pikseller için 1 bit/piksel maske dizisi üretilir. `drawRGBBitmap()`'in maskeli sürümüyle çizildiğinde logo, arka planın üzerine kare blok bırakmadan oturur.
 
 ## Geliştirme Notları
 
@@ -128,6 +146,7 @@ Bu panelle çalışırken karşılaşılan ve çözülen noktalar:
 - **SPI hızı**: Adafruit kütüphanesinin varsayılanı 32 MHz'dir. Breadboard ve jumper kablolarla bu hız sinyal bozulmasına yol açar; proje 4 MHz kullanır (`TFT_SPI_HIZI`).
 - **Init sırası**: Kütüphanenin `init()` fonksiyonu panel init komutlarını 32 MHz'de gönderir ve `setSPISpeed()` yalnızca init'ten sonra etki eder. Bu nedenle hız düşürüldükten sonra çekirdek ST7789 init komutları `panelInitEldenGonder()` ile elle yeniden gönderilir.
 - **GRAM offset**: 76x284 standart dışı bir çözünürlüktür. Kütüphane bu boyut için offsetleri (`colstart=82`, `rowstart=18`) otomatik hesaplar, manuel ayar gerekmez.
+- **Renk çevirme (INVON/INVOFF)**: Bu panelde renk çevirme **kapalı** olmalıdır. Init sırasında `INVON` (0x21) gönderildiğinde tüm renkler ters çıkar: siyah arka plan beyaza, beyaz yazılar siyaha, sarı maviye döner. Kod `INVOFF` (0x20) gönderir. Farklı bir panelle çalışılırsa bu komutun ters çevrilmesi gerekebilir.
 - **Ekran yönü**: Görüntü baş aşağı çıkarsa `setRotation(1)` yerine `setRotation(3)` kullanılabilir.
 - **GPIO2 (DC)**: ESP32'de strapping pindir. Yükleme sorunu yaşanırsa DC pini D15'e taşınabilir.
 - **DS18B20 adres keşfi**: Sensör değiştirilirse veya yeni sensör eklenirse, `src/main.cpp` içindeki "DS18B20 ADRES KEŞİF KODU" yorum bloğu geçici olarak aktif edilerek yeni ROM adresi seri porttan okunabilir. Adres alındıktan sonra blok tekrar yorum satırına alınmalıdır.
