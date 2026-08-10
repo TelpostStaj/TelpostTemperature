@@ -3,3 +3,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Kullaniciya ozel VS Code calisma alani dosyasi: proje disina (..) referans
+# verdigi icin baska makinelerde anlamsizdir.
+*.code-workspace
