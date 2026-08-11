@@ -117,9 +117,11 @@ static void ayarlariYukle() {
   ayarlar.cizgiRengi = kalici.getUShort("cizgi", ayarlar.cizgiRengi);
   ayarlar.sessizMod = kalici.getBool("sessiz", ayarlar.sessizMod);
 
-  // Dort ceyrek atamasi tek bir 32 bitlik degerde paketlenir (ceyrek basina 1 bayt)
-  uint32_t paket = kalici.getUInt("ceyrek", 0);
-  if (paket != 0) {
+  // Dort ceyrek atamasi tek bir 32 bitlik degerde paketlenir (ceyrek basina
+  // 1 bayt). Kaydin varligi isKey() ile sorulur: paketin 0 olmasi gecerli bir
+  // yerlesimdir (dort ceyrekte de sicaklik), "kayit yok" anlamina gelmez.
+  if (kalici.isKey("ceyrek")) {
+    uint32_t paket = kalici.getUInt("ceyrek");
     bool gecerli = true;
     uint8_t okunan[CEYREK_SAYISI];
     for (uint8_t i = 0; i < CEYREK_SAYISI; i++) {

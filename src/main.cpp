@@ -28,31 +28,30 @@
 
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
-// --- SENSÖR AYARLARI ---
-Adafruit_BMP280 bmp; // BMP280 nesnesini oluşturuyoruz
+// --- BMP280 (ORTAM SICAKLIK / BASINC) ---
+Adafruit_BMP280 bmp;
 
 // --- DS18B20 (SU / YAĞ SICAKLIK SENSÖRLERİ) ---
-// 1-Wire protokolü: iki sensör de ayni veri hattini paylasir (D27),
-// hatta 4.7k pull-up direnc (DQ - 3.3V arasi) gerekir. Sensorler ROM
-// adresleriyle ayirt edilir; index'e (0,1) guvenmek bus sirasi degisirse
-// su/yag karismasina yol acabilir.
+// 1-Wire protokolü: iki sensör de ayni veri hattini paylasir, hatta 4.7k
+// pull-up direnc (DQ - 3.3V arasi) gerekir.
+#define ONEWIRE_PIN 27
+OneWire oneWire(ONEWIRE_PIN);
+DallasTemperature ds18b20(&oneWire);
+
+// Sensorler ROM adresleriyle ayirt edilir. Index'e (0, 1) guvenmek bus
+// sirasi degisirse su ve yag okumalarinin yer degistirmesine yol acar.
+// Adresler asagidaki kesif prosedurüyle bulunmustur.
+DeviceAddress SU_SENSOR_ADRESI  = { 0x28, 0xB2, 0x9A, 0xC8, 0x00, 0x00, 0x00, 0x58 };
+DeviceAddress YAG_SENSOR_ADRESI = { 0x28, 0xA5, 0x9F, 0xC8, 0x00, 0x00, 0x00, 0x54 };
+
 // --- BUZZER ---
 // Aktif buzzer (icinde osilator olan) da pasif buzzer da calisir: pasif
 // buzzer icin LEDC ile ton uretilir, aktif buzzer bu sinyalde de oter.
 #define BUZZER_PIN 32
 #define BUZZER_LEDC_KANALI 0
 #define BUZZER_FREKANS 2700 // Hz - kucuk buzzerlarin en gur oldugu bolge
-#define BUZZER_BIP_MS 150   // Bir bip suresi
-#define BUZZER_ARA_MS 850   // Bipler arasi sessizlik
-
-#define ONEWIRE_PIN 27
-OneWire oneWire(ONEWIRE_PIN);
-DallasTemperature ds18b20(&oneWire);
-
-// Adres kesif prosedurüyle (asagidaki yorum satirina bakin) bulunan
-// gercek ROM adresleri:
-DeviceAddress SU_SENSOR_ADRESI  = { 0x28, 0xB2, 0x9A, 0xC8, 0x00, 0x00, 0x00, 0x58 };
-DeviceAddress YAG_SENSOR_ADRESI = { 0x28, 0xA5, 0x9F, 0xC8, 0x00, 0x00, 0x00, 0x54 };
+#define BUZZER_BIP_MS 150
+#define BUZZER_ARA_MS 850
 
 /* ============================================================
    DS18B20 ADRES KEŞİF KODU (REFERANS - AKTİF DEĞİL)
@@ -117,16 +116,14 @@ static void adresKesifModu() {
    ============================================================ */
 
 // --- LOGO ---
-// Amblem gercek gorselden uretilmis RGB565 bitmap olarak gomulur.
-// include/logo.h dosyasi tools/logo_donustur.py tarafindan olusturulur:
-//   python tools/logo_donustur.py bmwlogo.png include/logo.h logoBuyuk=64 logoMerkez=34
-// Acilis icin logoBuyuk (64x64), merkez icin logoMerkez (34x34) kullanilir.
+// Amblemler gercek gorsellerden uretilmis RGB565 bitmap olarak gomulur;
+// cihazda dosya sistemi yok. Header'lari tools/logo_donustur.py uretir:
+//   python tools/logo_donustur.py bmwacilis.jpg include/logo_acilis.h logoAcilis=284x76
+//   python tools/logo_donustur.py bmwlogo.png  include/logo_merkez.h logoMerkez=34
 
 // --- EKRAN YERLEŞİMİ (YATAY / LANDSCAPE, 2x2 IZGARA) ---
-// setRotation(1) ile panel 284 px genis, 76 px yuksek hale gelir.
-// 4 deger sigdirmak icin ekran 2 satir x 2 sutuna bolunur:
-//   Ust satir : SICAKLIK (BMP280) | BASINC (BMP280)
-//   Alt satir : SU (DS18B20)      | YAG (DS18B20)
+// setRotation(1) ile panel 284 px genis, 76 px yuksek hale gelir ve dort
+// ceyrege bolunur. Hangi ceyrekte hangi olcumun gorunecegi ayarlardan gelir.
 #define EKRAN_GENISLIK 284
 #define EKRAN_YUKSEKLIK 76
 
@@ -148,16 +145,13 @@ static void adresKesifModu() {
 #define DEGER_GENISLIK 100
 #define DEGER_YUKSEKLIK 16
 
-// --- ÖLÇÜM ZAMANLAMASI ---
-// delay() yerine millis() tabanlı kontrol: loop bloklanmaz, böylece asenkron
-// web sunucusu istekleri gecikmeden isleyebilir.
-// Aralik web arayuzunden degistirilebilir; guncel deger webAyarlar() ile alinir.
+// Olcum araligi ayarlardan gelir; loop() delay() ile bloklanmaz ki asenkron
+// web sunucusu istekleri gecikmeden isleyebilsin.
 static unsigned long sonOlcumZamani = 0;
 
-// --- ÖLÇÜM TANIMLARI ---
-// Etiket metni ve renkler artık ayarlardan gelir (web arayüzünden
-// değiştirilebilir). Bunlar ölçüme bağlıdır, çeyreğe değil: bir ölçüm hangi
-// çeyreğe taşınırsa etiketi, renkleri ve alarm göstergesi onunla birlikte taşınır.
+// Etiket metni ve renkler ayarlardan gelir ve olcume baglidir, ceyrege degil:
+// bir olcum baska ceyrege tasindiginda etiketi, renkleri ve alarm gostergesi
+// onunla birlikte tasinir.
 
 // Çeyrek konumları: CEYREK_SOL_UST, CEYREK_SAG_UST, CEYREK_SOL_ALT, CEYREK_SAG_ALT
 static const int16_t CEYREK_X[CEYREK_SAYISI] = {
@@ -298,17 +292,17 @@ static void buzzeriGuncelle(bool alarmVar) {
 
 // BMP280'i başlatır ve örnekleme ayarlarını uygular.
 // Hem setup()'ta hem de sensör sonradan takıldığında loop()'tan çağrılır.
+// 0x76: piyasadaki ucuz modullerin adresi (orijinal Adafruit kartlar 0x77).
 static bool bmp280Baslat() {
   if (!bmp.begin(0x76)) {
     return false;
   }
 
-  // Sensörün örnekleme kalitesini ayarlıyoruz (Standart kullanım için)
-  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Çalışma modu. */
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
                   Adafruit_BMP280::SAMPLING_X2,     /* Sıcaklık aşırı örnekleme */
                   Adafruit_BMP280::SAMPLING_X16,    /* Basınç aşırı örnekleme */
                   Adafruit_BMP280::FILTER_X16,      /* Gürültü filtresi */
-                  Adafruit_BMP280::STANDBY_MS_500); /* Ölçümler arası bekleme süresi */
+                  Adafruit_BMP280::STANDBY_MS_500); /* Ölçümler arası bekleme */
   return true;
 }
 
@@ -337,8 +331,19 @@ static void degerYaz(int16_t x, int16_t y, float deger, uint16_t renk, bool alar
   tft.setTextSize(1);
 }
 
+// Bir olcumu seri porta yazar; okunamayan deger NAN olarak gelir.
+static void seriyeYaz(const __FlashStringHelper *ad, float deger,
+                      const __FlashStringHelper *birim) {
+  Serial.print(ad);
+  if (isnan(deger)) {
+    Serial.println(F("READ FAILED"));
+  } else {
+    Serial.print(deger);
+    Serial.println(birim);
+  }
+}
+
 void setup() {
-  // Seri haberleşmeyi başlat (Hata ayıklama için)
   Serial.begin(115200);
   Serial.println(F("Starting BMP280, DS18B20 and ST7789..."));
 
@@ -358,18 +363,14 @@ void setup() {
   acilisEkraniniGoster();
 
   // 2. WIFI ERISIM NOKTASI VE WEB ARAYUZU
-  // Ekran iskeletinden ONCE baslatilir: kayitli yerlesim ve cizgi rengi
-  // ayarlari NVS'ten burada yuklenir, iskelet bunlara gore cizilir.
-  // Asenkron sunucu kendi olay dongusunde calisir; loop() icinde ek cagri
-  // gerektirmez, bu yuzden olcum zamanlamasini etkilemez.
+  // Ekran iskeletinden ONCE baslatilir: kayitli yerlesim, renk ve etiketler
+  // NVS'ten burada yuklenir, iskelet bunlara gore cizilir.
   webArayuzunuBaslat();
 
   // 3. EKRAN ISKELETI (kayitli ayarlarla)
   ekranIskeletiniCiz();
 
   // 4. BMP280 SENSÖRÜNÜ BAŞLATMA
-  // Piyasadaki ucuz BMP280 modüllerinin adresi genellikle 0x76'dır.
-  // Orijinal Adafruit sensörleri 0x77 kullanır. Bu yüzden 0x76 adresini veriyoruz.
   // Sensör yoksa çalışma durdurulmaz: web arayüzü ve diğer sensörler çalışmaya
   // devam eder, eksik değerler ekranda "--" olarak görünür. Sensör sonradan
   // takılırsa loop() içindeki yeniden deneme onu devreye alır.
@@ -419,67 +420,35 @@ void loop() {
     basinc = bmp.readPressure() / 100.0F;
   }
 
-  // 2. DS18B20'lerden su/yag sicakliklarini okuma (1-Wire, ayni D27 hatti)
+  // 2. DS18B20'lerden su/yag sicakliklarini okuma (1-Wire, ayni hat)
+  // Kopuk sensor DEVICE_DISCONNECTED_C dondurur; bu deger hemen NAN'a
+  // cevrilir ki asagisi tek bir "okunamadi" gosterimiyle calissin.
   ds18b20.requestTemperatures();
   float suSicakligi = ds18b20.getTempC(SU_SENSOR_ADRESI);
   float yagSicakligi = ds18b20.getTempC(YAG_SENSOR_ADRESI);
+  if (suSicakligi == DEVICE_DISCONNECTED_C) suSicakligi = NAN;
+  if (yagSicakligi == DEVICE_DISCONNECTED_C) yagSicakligi = NAN;
+
+  float degerler[OLCUM_SAYISI] = {sicaklik, basinc, suSicakligi, yagSicakligi};
 
   // 3. Verileri Seri Monitörde gösterme
-  Serial.print(F("Temperature: "));
-  if (isnan(sicaklik)) {
-    Serial.println(F("READ FAILED"));
-  } else {
-    Serial.print(sicaklik);
-    Serial.println(F(" *C"));
-  }
-
-  Serial.print(F("Pressure: "));
-  if (isnan(basinc)) {
-    Serial.println(F("READ FAILED"));
-  } else {
-    Serial.print(basinc);
-    Serial.println(F(" hPa"));
-  }
-
-  Serial.print(F("Water temp: "));
-  if (suSicakligi == DEVICE_DISCONNECTED_C) {
-    Serial.println(F("READ FAILED"));
-  } else {
-    Serial.print(suSicakligi);
-    Serial.println(F(" *C"));
-  }
-
-  Serial.print(F("Oil temp: "));
-  if (yagSicakligi == DEVICE_DISCONNECTED_C) {
-    Serial.println(F("READ FAILED"));
-  } else {
-    Serial.print(yagSicakligi);
-    Serial.println(F(" *C"));
-  }
+  seriyeYaz(F("Temperature: "), sicaklik, F(" *C"));
+  seriyeYaz(F("Pressure: "), basinc, F(" hPa"));
+  seriyeYaz(F("Water temp: "), suSicakligi, F(" *C"));
+  seriyeYaz(F("Oil temp: "), yagSicakligi, F(" *C"));
 
   // 4. Olcumleri web arayuzune bildir (WebSocket ile canli akis + gecmis kaydi)
-  // Okunamayan DS18B20 degerleri NAN olarak gecilir; arayuz bunlari "--" gosterir.
-  webOlcumBildir(sicaklik, basinc,
-                 (suSicakligi == DEVICE_DISCONNECTED_C) ? NAN : suSicakligi,
-                 (yagSicakligi == DEVICE_DISCONNECTED_C) ? NAN : yagSicakligi);
+  webOlcumBildir(sicaklik, basinc, suSicakligi, yagSicakligi);
 
   // 5. Verileri TFT ekranda gösterme
-  // Web arayuzunden yerlesim veya cizgi rengi degistiyse once iskeleti yeniden
+  // Web arayuzunden yerlesim, renk veya etiket degistiyse once iskeleti yeniden
   // ciz; onbellegi temizleyerek tum degerlerin yeni konumlarina yazilmasini sagla.
-  bool tumunuYenidenCiz = webYerlesimDegistiMi();
-  if (tumunuYenidenCiz) {
+  if (webYerlesimDegistiMi()) {
     ekranIskeletiniCiz();
     for (uint8_t i = 0; i < OLCUM_SAYISI; i++) {
       sonCizildi[i] = false;
     }
   }
-
-  float degerler[OLCUM_SAYISI] = {
-      sicaklik,
-      basinc,
-      (suSicakligi == DEVICE_DISCONNECTED_C) ? NAN : suSicakligi,
-      (yagSicakligi == DEVICE_DISCONNECTED_C) ? NAN : yagSicakligi,
-  };
 
   const Ayarlar &ayar = webAyarlar();
 
