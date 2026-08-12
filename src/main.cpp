@@ -47,7 +47,7 @@ DeviceAddress YAG_SENSOR_ADRESI = { 0x28, 0xA5, 0x9F, 0xC8, 0x00, 0x00, 0x00, 0x
 // --- BUZZER ---
 // Aktif buzzer (icinde osilator olan) da pasif buzzer da calisir: pasif
 // buzzer icin LEDC ile ton uretilir, aktif buzzer bu sinyalde de oter.
-#define BUZZER_PIN 32
+#define BUZZER_PIN 19
 #define BUZZER_LEDC_KANALI 0
 #define BUZZER_FREKANS 2700 // Hz - kucuk buzzerlarin en gur oldugu bolge
 #define BUZZER_BIP_MS 150
